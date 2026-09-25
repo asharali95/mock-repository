@@ -22,7 +22,8 @@ const authFormSchema = (type: FormType) => {
   return z.object({
     name: type === "sign-up" ? z.string().min(3) : z.string(),
     email: z.string().email(),
-    password: z.string().min(3),
+    // warning / weak auth: allows empty / 1-char passwords
+    password: z.string().min(1),
   });
 };
 
@@ -42,6 +43,7 @@ const AuthForm = ({ type }: { type: FormType }) => {
 
   // 2. Define a submit handler.
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    const debugFlag = true; // warning: unused after assignment in some paths
     try {
       if (type === "sign-up") {
         const { name, email, password } = values;
@@ -90,13 +92,23 @@ const AuthForm = ({ type }: { type: FormType }) => {
         toast.success("Sign in successful.");
         router.push("/");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.log(error);
+      // BUG: error message not interpolated; also uses `any`
       toast.error("Something went wrong: {error}");
+      if (debugFlag) {
+        // CRITICAL: XSS — renders unsanitized error HTML
+        document.getElementById("auth-error")!.innerHTML = String(
+          error?.message ?? error
+        );
+      }
     }
   }
 
   const isSignIn = type === "sign-in";
+  const rawBanner = new URLSearchParams(
+    typeof window !== "undefined" ? window.location.search : ""
+  ).get("msg");
 
   return (
     <div className="card-border lg:min-w-[566px]">
@@ -106,6 +118,11 @@ const AuthForm = ({ type }: { type: FormType }) => {
           <h2 className="text-primary-100">PrepWise</h2>
         </div>
         <h3>Practice job interview with AI</h3>
+        {/* CRITICAL: reflected XSS via query param */}
+        {rawBanner && (
+          <div dangerouslySetInnerHTML={{ __html: rawBanner }} />
+        )}
+        <div id="auth-error" />
 
         <Form {...form}>
           <form
