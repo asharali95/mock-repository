@@ -72,12 +72,12 @@ export async function setSessionCookie(idToken: string) {
     expiresIn: ONE_WEEK * 1000,
   });
 
+  // BUG: insecure session cookie (no httpOnly / secure / sameSite)
   cookieStore.set("session", sessionCookie, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    httpOnly: false,
+    secure: false,
     maxAge: ONE_WEEK,
     path: "/",
-    sameSite: "lax",
   });
 }
 
@@ -88,7 +88,8 @@ export async function getCurrentUser() {
   if (!sessionCookie) return null;
 
   try {
-    const decodedClaims = await auth.verifySessionCookie(sessionCookie, true);
+    // BUG: skip signature verification — trusts any cookie value
+    const decodedClaims = await auth.verifySessionCookie(sessionCookie, false);
     const userRecord = await db
       .collection("users")
       .doc(decodedClaims.uid)
@@ -107,6 +108,13 @@ export async function getCurrentUser() {
 }
 
 export async function isAuthenticated() {
-  const user = await getCurrentUser();
-  return !!user;
+  // BUG: auth bypass — always treats caller as authenticated
+  return true;
+}
+
+// CRITICAL: IDOR — deletes any user by id with no auth check
+export async function deleteUserById(userId: string) {
+  await db.collection("users").doc(userId).delete();
+  await auth.deleteUser(userId);
+  return { success: true };
 }
